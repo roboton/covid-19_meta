@@ -282,13 +282,15 @@ joined %>%
 
 ##  Days to double deaths since 10th death {.tabset .tabset-fade .tabset-pills}
 
+### Country/Region level
+
 ```{r fig.height=6, message=FALSE, warning=FALSE}
-#plot_deaths_since_first <- function(df, days_since) {
 days_since <- 20
 n_deaths <- 10
 min_deaths <- n_deaths * 2
 top_n_countries <- 1:10
 
+# TODO(roboton): Refactor into prep and plot functions
 joined %>%
   # plot prep at country level
   plot_prep("Country/Region", show_top = top_n_countries) %>%
@@ -322,5 +324,49 @@ joined %>%
         legend.title = element_blank()) +
   ylab("Double days") +
   ylab("Days since 10th death")
-#}
+```
+
+### State/Province level
+
+```{r fig.height=6, message=FALSE, warning=FALSE}
+days_since <- 20
+n_deaths <- 10
+min_deaths <- n_deaths * 2
+top_n_states <- 1:10
+
+# TODO(roboton): Refactor into prep and plot functions
+joined %>%
+  # plot prep at country level
+  filter(!is.na(`Province/State`) & `Province/State` != `Country/Region`) %>%
+  plot_prep("Province/State", show_top = top_n_countries) %>%
+  # limit to deaths
+  filter(stat == "deaths") %>%
+  # drop countries with less than min_deaths
+  group_by(location) %>%
+  filter(value[which.max(date)] >= min_deaths) %>%
+  ungroup() %>%
+  # get the first date with more than or equal to n_deaths
+  group_by(location) %>%
+  mutate(nth_death_date = date[which(value >= n_deaths)][1]) %>%
+  mutate(`Days since nth death` = date - nth_death_date) %>%
+  # Drop days before nth deaths date
+  filter(`Days since nth death` > 0) %>%
+  mutate(
+    # get double days
+    `Days to double` = date -
+      date[sapply(value,
+                  function(x) { which.min(abs(floor(x / 2) - value)) })],
+    # set to zero for values less than min_deaths
+    `Days to double` = if_else(value < min_deaths, as.difftime("", units="days"),
+                               `Days to double`)) %>%
+  arrange(location, stat, date) %>%
+  filter(`Days since nth death` <= days_since) %>%
+  ggplot(aes(`Days since nth death`, `Days to double`, color=location)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(se=F) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  theme(strip.background = element_blank(), legend.position = "right",
+        legend.title = element_blank()) +
+  ylab("Double days") +
+  ylab("Days since 10th death")
 ```
