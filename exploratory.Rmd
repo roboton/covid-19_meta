@@ -235,21 +235,92 @@ joined %>%
 
 # Double days
 
-```{r fig.height=6, message=FALSE, warning=FALSE}
+## Double days by country/stat {.tabset .tabset-fade .tabset-pills}
+
+### Top 10 countries
+
+```{r fig.height=10, message=FALSE, warning=FALSE}
 joined %>%
-  plot_prep(dcr_wts = c(100, 0.1, 0), show_top = 1:9) %>%
+  plot_prep(dcr_wts = c(100, 0.1, 0), show_top = 1:10) %>%
   group_by(location, stat) %>%
   arrange(date) %>%
   mutate(
     `Days to double` = if_else(
-      value < 4, as.difftime("", units="days"),
+      value < 10, as.difftime("", units="days"),
       date - date[sapply(value, function(x) { which.min(abs(x / 2 - value)) })])
   ) %>%
   ggplot(aes(date, `Days to double`, color=stat)) +
   geom_point(alpha = 0.5) +
   geom_smooth() +
-  facet_wrap(vars(location), ncol = 3) + 
-  #facet_grid(vars(location), vars(stat)) + 
+  #facet_wrap(vars(location), ncol = 3) + 
+  facet_grid(vars(location), vars(stat), scales="free") + 
   theme(legend.position = "bottom", legend.title=element_blank()) +
   xlab(element_blank())
+```
+
+### excl China
+
+```{r fig.height=10, message=FALSE, warning=FALSE}
+joined %>%
+  filter(`Country/Region` != "China") %>%
+  plot_prep(dcr_wts = c(100, 0.1, 0), show_top = 1:10) %>%
+  group_by(location, stat) %>%
+  arrange(date) %>%
+  mutate(
+    `Days to double` = if_else(
+      value < 10, as.difftime("", units="days"),
+      date - date[sapply(value, function(x) { which.min(abs(x / 2 - value)) })])
+  ) %>%
+  ggplot(aes(date, `Days to double`, color=stat)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth() +
+  #facet_wrap(vars(location), ncol = 3) + 
+  facet_grid(vars(location), vars(stat), scales="free") + 
+  theme(legend.position = "bottom", legend.title=element_blank()) +
+  xlab(element_blank())
+```
+
+##  Days to double deaths since 10th death {.tabset .tabset-fade .tabset-pills}
+
+```{r fig.height=6, message=FALSE, warning=FALSE}
+#plot_deaths_since_first <- function(df, days_since) {
+days_since <- 20
+n_deaths <- 10
+min_deaths <- n_deaths * 2
+top_n_countries <- 1:10
+
+joined %>%
+  # plot prep at country level
+  plot_prep("Country/Region", show_top = top_n_countries) %>%
+  # limit to deaths
+  filter(stat == "deaths") %>%
+  # drop countries with less than min_deaths
+  group_by(location) %>%
+  filter(value[which.max(date)] >= min_deaths) %>%
+  ungroup() %>%
+  # get the first date with more than or equal to n_deaths
+  group_by(location) %>%
+  mutate(nth_death_date = date[which(value >= n_deaths)][1]) %>%
+  mutate(`Days since nth death` = date - nth_death_date) %>%
+  # Drop days before nth deaths date
+  filter(`Days since nth death` > 0) %>%
+  mutate(
+    # get double days
+    `Days to double` = date -
+      date[sapply(value,
+                  function(x) { which.min(abs(floor(x / 2) - value)) })],
+    # set to zero for values less than min_deaths
+    `Days to double` = if_else(value < min_deaths, as.difftime("", units="days"),
+                               `Days to double`)) %>%
+  arrange(location, stat, date) %>%
+  filter(`Days since nth death` <= days_since) %>%
+  ggplot(aes(`Days since nth death`, `Days to double`, color=location)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(se=F) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  theme(strip.background = element_blank(), legend.position = "right",
+        legend.title = element_blank()) +
+  ylab("Double days") +
+  ylab("Days since 10th death")
+#}
 ```
