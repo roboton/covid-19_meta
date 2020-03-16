@@ -42,34 +42,36 @@ recovered_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19
    gather(stat, value, confirmed, deaths, recovered) %>%
    arrange(`Country/Region`, `Province/State`, date, stat))
 ```
+```{r}
+plot_prep <- function(df, geo_level, dcr_wts = c(1, 0, 0), show_top_n = 10) {
+  df %>%
+    mutate(location = !!sym(geo_level)) %>%
+    # aggregate by location
+    group_by(location, date, stat) %>%
+    summarise(value = sum(value)) %>%
+    ungroup() %>%
+    # location order
+    mutate(total_wt = case_when(
+      stat == "deaths" ~ dcr_wts[1] * value,
+      stat == "confirmed" ~ dcr_wts[2] * value,
+      stat == "recovered" ~ dcr_wts[3] * value
+    )) %>%
+    add_count(location, wt = total_wt, name = "total") %>%
+    mutate(total_rank = dense_rank(desc(total))) %>%
+    # filter top n
+    filter(total_rank %in% 1:show_top_n) %>%
+    # order by rank
+    mutate(location = fct_reorder(location, total_rank)) 
+}
+```
 
 # Cross-country comparison {.tabset .tabset-fade .tabset-pills}
 
 ## Top countries
 
-```{r}
-geo_level <- "Country/Region"
-dcr_wts <- c(1, 0, 0)
-show_top_n <- 10
-
+```{r fig.height = 6}
 joined %>%
-  mutate(location = !!sym(geo_level)) %>%
-  # aggregate by location
-  group_by(location, date, stat) %>%
-  summarise(value = sum(value)) %>%
-  ungroup() %>%
-  # location order
-  mutate(total_wt = case_when(
-    stat == "deaths" ~ dcr_wts[1] * value,
-    stat == "confirmed" ~ dcr_wts[2] * value,
-    stat == "recovered" ~ dcr_wts[3] * value
-  )) %>%
-  add_count(location, wt = total_wt, name = "total") %>%
-  mutate(total_rank = dense_rank(desc(total))) %>%
-  # filter top n
-  filter(total_rank %in% 1:show_top_n) %>%
-  # order by rank
-  mutate(location = fct_reorder(location, total_rank)) %>%
+  plot_prep("Country/Region") %>%
   ggplot(aes(date, value, color=location)) +
   geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
   theme(legend.position = "bottom", legend.title = element_blank()) +
@@ -78,29 +80,10 @@ joined %>%
 
 ## sans China
 
-```{r}
-geo_level <- "Country/Region"
-dcr_wts <- c(1, 0, 0)
-show_top_n <- 10
-
+```{r fig.height = 6}
 joined %>%
-  mutate(location = !!sym(geo_level)) %>%
-  # aggregate by location
-  group_by(location, date, stat) %>%
-  summarise(value = sum(value)) %>%
-  ungroup() %>%
-  # location order
-  mutate(total_wt = case_when(
-    stat == "deaths" ~ dcr_wts[1] * value,
-    stat == "confirmed" ~ dcr_wts[2] * value,
-    stat == "recovered" ~ dcr_wts[3] * value
-  )) %>%
-  add_count(location, wt = total_wt, name = "total") %>%
-  mutate(total_rank = dense_rank(desc(total))) %>%
-  # filter top n
-  filter(total_rank %in% 2:(show_top_n + 1)) %>%
-  # order by rank
-  mutate(location = fct_reorder(location, total_rank)) %>%
+  filter(!`Country/Region` %in%  c("China")) %>%
+  plot_prep("Country/Region") %>%
   ggplot(aes(date, value, color=location)) +
   geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
   theme(legend.position = "bottom", legend.title = element_blank()) +
@@ -109,29 +92,10 @@ joined %>%
 
 ## sans Italy, Iran, South Korea
 
-```{r}
-geo_level <- "Country/Region"
-dcr_wts <- c(1, 0, 0)
-show_top_n <- 10
-
+```{r fig.height = 6}
 joined %>%
-  mutate(location = !!sym(geo_level)) %>%
-  # aggregate by location
-  group_by(location, date, stat) %>%
-  summarise(value = sum(value)) %>%
-  ungroup() %>%
-  # location order
-  mutate(total_wt = case_when(
-    stat == "deaths" ~ dcr_wts[1] * value,
-    stat == "confirmed" ~ dcr_wts[2] * value,
-    stat == "recovered" ~ dcr_wts[3] * value
-  )) %>%
-  add_count(location, wt = total_wt, name = "total") %>%
-  mutate(total_rank = dense_rank(desc(total))) %>%
-  # filter top n
-  filter(total_rank %in% 5:(show_top_n + 4)) %>%
-  # order by rank
-  mutate(location = fct_reorder(location, total_rank)) %>%
+  filter(!`Country/Region` %in%  c("China", "Italy", "Iran", "Korea, South")) %>%
+  plot_prep("Country/Region") %>%
   ggplot(aes(date, value, color=location)) +
   geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
   theme(legend.position = "bottom", legend.title = element_blank()) +
@@ -140,29 +104,11 @@ joined %>%
 
 ## sans Spain, France
 
-```{r}
-geo_level <- "Country/Region"
-dcr_wts <- c(1, 0, 0)
-show_top_n <- 10
-
+```{r fig.height = 6}
 joined %>%
-  mutate(location = !!sym(geo_level)) %>%
-  # aggregate by location
-  group_by(location, date, stat) %>%
-  summarise(value = sum(value)) %>%
-  ungroup() %>%
-  # location order
-  mutate(total_wt = case_when(
-    stat == "deaths" ~ dcr_wts[1] * value,
-    stat == "confirmed" ~ dcr_wts[2] * value,
-    stat == "recovered" ~ dcr_wts[3] * value
-  )) %>%
-  add_count(location, wt = total_wt, name = "total") %>%
-  mutate(total_rank = dense_rank(desc(total))) %>%
-  # filter top n
-  filter(total_rank %in% 7:(show_top_n + 6)) %>%
-  # order by rank
-  mutate(location = fct_reorder(location, total_rank)) %>%
+  filter(!`Country/Region` %in%  c("China", "Italy", "Iran", "Korea, South",
+                                   "Spain", "France")) %>%
+  plot_prep("Country/Region") %>%
   ggplot(aes(date, value, color=location)) +
   geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
   theme(legend.position = "bottom", legend.title = element_blank()) +
