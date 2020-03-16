@@ -40,9 +40,23 @@ recovered_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19
    left_join(deaths_ts) %>%
    left_join(recovered_ts) %>%
    gather(stat, value, confirmed, deaths, recovered) %>%
-   arrange(`Country/Region`, `Province/State`, date, stat))
+   arrange(`Country/Region`, `Province/State`, date, stat)) %>%
+  sample_frac(1.0)
 ```
 ```{r}
+#' Prepares data.frame for plotting by aggregating, weighting, reordering, 
+#' and filtering by location.
+#'
+#' @param geo_level column name to aggregate (sum) by
+#' @param dcr_wts weights to order locations; vector of c(deaths, confirmed, recovered)
+#' @param show_top_n show top n locations ordered by dcr_wts
+#'
+#' @return an aggregated, reordered, and filtered by location data.frame
+#'
+#' @examples
+#' plot_prep("Country/Region", c(100, 1, -1), show_top_n = 25)
+#'
+#' @export
 plot_prep <- function(df, geo_level, dcr_wts = c(1, 0, 0), show_top_n = 10) {
   df %>%
     mutate(location = !!sym(geo_level)) %>%
@@ -67,15 +81,24 @@ plot_prep <- function(df, geo_level, dcr_wts = c(1, 0, 0), show_top_n = 10) {
 
 # Cross-country comparison {.tabset .tabset-fade .tabset-pills}
 
+```{r}
+#' Convenience function to plot country comparisons
+plot_country_comps <- function(df) {
+  df %>% 
+    ggplot(aes(date, value, color=location)) +
+    geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
+    theme(legend.position = "bottom", legend.title = element_blank()) +
+    xlab(element_blank())
+}
+```
+
+
 ## Top countries
 
 ```{r fig.height = 6}
 joined %>%
   plot_prep("Country/Region") %>%
-  ggplot(aes(date, value, color=location)) +
-  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
-  theme(legend.position = "bottom", legend.title = element_blank()) +
-  xlab(element_blank())
+  plot_country_comps()
 ```
 
 ## sans China
@@ -84,10 +107,7 @@ joined %>%
 joined %>%
   filter(!`Country/Region` %in%  c("China")) %>%
   plot_prep("Country/Region") %>%
-  ggplot(aes(date, value, color=location)) +
-  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
-  theme(legend.position = "bottom", legend.title = element_blank()) +
-  xlab(element_blank())
+  plot_country_comps()
 ```
 
 ## sans Italy, Iran, South Korea
@@ -96,10 +116,7 @@ joined %>%
 joined %>%
   filter(!`Country/Region` %in%  c("China", "Italy", "Iran", "Korea, South")) %>%
   plot_prep("Country/Region") %>%
-  ggplot(aes(date, value, color=location)) +
-  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
-  theme(legend.position = "bottom", legend.title = element_blank()) +
-  xlab(element_blank())
+  plot_country_comps()
 ```
 
 ## sans Spain, France
@@ -118,26 +135,11 @@ joined %>%
 # Examining growth {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
+#' Convenience function to plot growth comparisons
 plot_growth_comps <- function(df, geo_level, dcr_wts = c(1, 0, 0),
-                              show_top_n = 20) {
+                              show_top_n = 10) {
   df %>%
-    mutate(location = !!sym(geo_level)) %>%
-    # aggregate by location
-    group_by(location, date, stat) %>%
-    summarise(value = sum(value)) %>%
-    ungroup() %>%
-    # location order
-    mutate(total_wt = case_when(
-      stat == "deaths" ~ dcr_wts[1] * value,
-      stat == "confirmed" ~ dcr_wts[2] * value,
-      stat == "recovered" ~ dcr_wts[3] * value
-    )) %>%
-    add_count(location, wt = total_wt, name = "total") %>%
-    mutate(total_rank = dense_rank(desc(total))) %>%
-    # filter top n
-    filter(total_rank %in% 1:show_top_n) %>%
-    # order by rank
-    mutate(location = fct_reorder(location, total_rank)) %>%
+    plot_prep(geo_level, dcr_wts, show_top_n) %>%
     ggplot(aes(date, value)) + geom_line() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
     facet_wrap(
