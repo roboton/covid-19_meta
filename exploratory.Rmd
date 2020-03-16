@@ -40,8 +40,9 @@ recovered_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19
    left_join(deaths_ts) %>%
    left_join(recovered_ts) %>%
    gather(stat, value, confirmed, deaths, recovered) %>%
-   arrange(`Country/Region`, `Province/State`, date, stat)) %>%
-  sample_frac(1.0)
+   arrange(`Country/Region`, `Province/State`, date, stat)) %>% sample_frac(1)
+joined %>%
+  mutate_if(is.character, as.factor) %>% summary()
 ```
 ```{r}
 #' Prepares data.frame for plotting by aggregating, weighting, reordering, 
@@ -193,13 +194,12 @@ joined %>%
 ```
 
 # Total deaths since first death {.tabset .tabset-fade .tabset-pills}
-
 ```{r}
 plot_deaths_since_first <- function(df, days_since) {
   df %>%
     group_by(`Country/Region`) %>%
-    mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
-    filter(total_deaths > 0 ) %>%
+    mutate(total_deaths = value[which(date == max(date) & stat == "deaths")][1]) %>%
+    filter(total_deaths > 0) %>%
     plot_prep("Country/Region") %>%
     arrange(location, stat, date) %>%
     group_by(location) %>%
@@ -215,7 +215,6 @@ plot_deaths_since_first <- function(df, days_since) {
 }
 ```
 
-
 ## 10 days since first death
 ```{r fig.width = 8}
 joined %>%
@@ -227,8 +226,30 @@ joined %>%
 joined %>%
   plot_deaths_since_first(30)
 ```
+
 ## 90 days since first death
 ```{r fig.width = 8}
 joined %>%
   plot_deaths_since_first(90)
+```
+
+# Double days
+
+```{r fig.height=6, message=FALSE, warning=FALSE}
+joined %>%
+  plot_prep(dcr_wts = c(100, 0.1, 0), show_top = 1:9) %>%
+  group_by(location, stat) %>%
+  arrange(date) %>%
+  mutate(
+    `Days to double` = if_else(
+      value < 4, as.difftime("", units="days"),
+      date - date[sapply(value, function(x) { which.min(abs(x / 2 - value)) })])
+  ) %>%
+  ggplot(aes(date, `Days to double`, color=stat)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth() +
+  facet_wrap(vars(location), ncol = 3) + 
+  #facet_grid(vars(location), vars(stat)) + 
+  theme(legend.position = "bottom", legend.title=element_blank()) +
+  xlab(element_blank())
 ```
