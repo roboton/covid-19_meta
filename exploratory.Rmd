@@ -218,33 +218,9 @@ joined %>%
 
 ## US
 
-```{r, fig.width=9, fig.height=15}
+```{r, fig.width=9, fig.height=18}
 joined %>%
   filter(`Country/Region` == "US") %>%
-  plot_growth_comps("Province/State", show_top_n = 10)
-```
-
-## United Kingdom
-
-```{r, fig.width=9, fig.height=5}
-joined %>%
-  filter(`Country/Region` == "United Kingdom") %>%
-  plot_growth_comps("Province/State", show_top_n = 10)
-```
-
-## France
-
-```{r, fig.width=9, fig.height=10}
-joined %>%
-  filter(`Country/Region` == "France") %>%
-  plot_growth_comps("Province/State", show_top_n = 10)
-```
-
-## Denmark
-
-```{r, fig.width=9, fig.height=4}
-joined %>%
-  filter(`Country/Region` == "Denmark") %>%
   plot_growth_comps("Province/State", show_top_n = 10)
 ```
 
