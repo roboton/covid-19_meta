@@ -3,12 +3,9 @@ title: "COVID-19 Exploratory"
 output:
   html_notebook:
     code_folding: hide
-    toc: true
-    toc_float:
-      toc_collapsed: true
-    toc_depth: 3
-    number_sections: true
     theme: lumen
+  html_document:
+    df_print: paged
 ---
 
 [Github repo](https://github.com/roboton/covid-19_meta)
@@ -46,347 +43,223 @@ recovered_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19
    arrange(`Country/Region`, `Province/State`, date, stat))
 ```
 
+# Cross-country comparison {.tabset .tabset-fade .tabset-pills}
+
+## Top countries
+
 ```{r}
-show_top_n <- 3
+geo_level <- "Country/Region"
+dcr_wts <- c(1, 0, 0)
+show_top_n <- 10
 
-my_labeller <- function(x) {
-  x <- x %>% mutate(
-    stat = if_else(row_number() > 3, "foo", stat)) %>%
-    select(-`Country/Region`)
-  print(x)
-  return(x)
-}
-
-g <- joined %>%
-  # aggregate by country
-  group_by(`Country/Region`, date, stat) %>%
+joined %>%
+  mutate(location = !!sym(geo_level)) %>%
+  # aggregate by location
+  group_by(location, date, stat) %>%
   summarise(value = sum(value)) %>%
   ungroup() %>%
-  add_count(`Country/Region`, wt = value, name = "total") %>%
+  # location order
+  mutate(total_wt = case_when(
+    stat == "deaths" ~ dcr_wts[1] * value,
+    stat == "confirmed" ~ dcr_wts[2] * value,
+    stat == "recovered" ~ dcr_wts[3] * value
+  )) %>%
+  add_count(location, wt = total_wt, name = "total") %>%
   mutate(total_rank = dense_rank(desc(total))) %>%
+  # filter top n
   filter(total_rank %in% 1:show_top_n) %>%
-  #ggplot(aes(date, value, color=`Country/Region`)) +
-  ggplot(aes(date, value)) +
-  geom_line() +
-  theme(axis.text.x = element_text(angle = 90, vjust=0.5))
-  
-g1 <- g + facet_wrap(vars(`Country/Region`, stat), scales="free_y", ncol = 3) +
-  theme(strip.background = element_blank(), strip.text.x = element_blank())
-
-g2 <- g + facet_grid(vars(`Country/Region`), vars(stat), scales="free")
-
-g1
+  # order by rank
+  mutate(location = fct_reorder(location, total_rank)) %>%
+  ggplot(aes(date, value, color=location)) +
+  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
+  theme(legend.position = "bottom", legend.title = element_blank()) +
+  xlab(element_blank())
 ```
 
-
-### Deaths
-
-Deaths are probably the most reliable measure due to the fact we expect that testing is priortized to those who are in serious condition or who have died.
-
-First lets take a look at this by country, with the assumption that controlling inflows and outflows between countries is easier than between states or provinces.
-
-
+## sans China
 
 ```{r}
-deaths_ts %>%
-  gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date)) %>%
-  group_by(`Country/Region`, date) %>%
-  summarise(deaths=sum(deaths)) %>%
+geo_level <- "Country/Region"
+dcr_wts <- c(1, 0, 0)
+show_top_n <- 10
+
+joined %>%
+  mutate(location = !!sym(geo_level)) %>%
+  # aggregate by location
+  group_by(location, date, stat) %>%
+  summarise(value = sum(value)) %>%
   ungroup() %>%
-  add_count(`Country/Region`, wt = deaths, name = "total_deaths") %>%
-  mutate(total_deaths_rank = dense_rank(desc(total_deaths))) %>%
-  filter(total_deaths_rank %in% 1:show_top_n) %>%
-  ggplot(aes(date, deaths, color=`Country/Region`)) +
-  geom_line()
+  # location order
+  mutate(total_wt = case_when(
+    stat == "deaths" ~ dcr_wts[1] * value,
+    stat == "confirmed" ~ dcr_wts[2] * value,
+    stat == "recovered" ~ dcr_wts[3] * value
+  )) %>%
+  add_count(location, wt = total_wt, name = "total") %>%
+  mutate(total_rank = dense_rank(desc(total))) %>%
+  # filter top n
+  filter(total_rank %in% 2:(show_top_n + 1)) %>%
+  # order by rank
+  mutate(location = fct_reorder(location, total_rank)) %>%
+  ggplot(aes(date, value, color=location)) +
+  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
+  theme(legend.position = "bottom", legend.title = element_blank()) +
+  xlab(element_blank())
 ```
 
-```{r}
-deaths_ts %>%
-  gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date)) %>%
-  group_by(`Country/Region`, date) %>%
-  summarise(deaths=sum(deaths)) %>%
-  mutate(countries = "all countries") %>%
-  bind_rows(., filter(mutate(., countries = "excl china"), `Country/Region` != "China")) %>%
-  bind_rows(., filter(mutate(., countries="excl korea, iran, italy"), !`Country/Region` %in% c("China", "Iran", "Korea, South", "Italy"))) %>%
-  ggplot(aes(date, deaths, color=`Country/Region`)) +
-  geom_line() + theme(legend.position = "None") +
-  facet_wrap(~ countries, scales = "free", ncol=1)
-```
-
-### Location cases
+## sans Italy, Iran, South Korea
 
 ```{r}
-deaths_ts %>%
-  gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date),
-         location = paste(`Province/State`, `Country/Region`)) %>%
-  add_count(location, wt=deaths, name = "total_deaths") %>%
-  mutate(total_deaths_rank=dense_rank(desc(total_deaths))) %>%
-  filter(total_deaths_rank %in% 1:10) %>%
-  ggplot(aes(date, deaths, fill=`location`)) +
-  geom_bar(stat="identity") +
-  theme(legend.position = "None") +
-  facet_wrap(~ `Country/Region`, scale="free") +
-  geom_smooth(method = "loess")
-```
+geo_level <- "Country/Region"
+dcr_wts <- c(1, 0, 0)
+show_top_n <- 10
 
-
-
-
-In this notebook we seek to estimate accurate measures relevant to the COVID-19 outbreak.  Over a given population at a given time period we seek to measure:
-
-1. The total number of people (live population)
-2. Number of people infected by COVID-19 (and a comparable disease, like the seasonal influenza)
-3. For the infected population we would like to know (a) when they were infected, (b) when and how they show symptoms (asymptomatic, mild, or severe), and (c) when and how their infection resolved (death or recovery).
-
-Since someone who is infected can technically be re-infected, our unit of analysis is a person-infection which will be referred to as a `case`.
-
-# Base measures
-
-## Total population
-
-We use most recent estimates from wikipedia as our source of population.  This figure may be inaccurate simply due to being outdated or directly related to COVID-19 via deaths or outbreak-relevant migration.  Some trends we may hypothesize are (1) out migration from areas with well publicized outbreaks to areas with less, (2) unusually static net migration due to regional quarantine, (3) migration to areas with less human density to avoid the virus, or (4) migration home to be with loved ones.  Overall we expect to see less or diminshing migration activity due to restricted business activity and fear of infection during travel.
-
-## Number of people infected (cases)
-
-This is one of the most crucial numbers in understanding the prevalence and growth of a disease.  Typically this number is registered by performing tests.  Since the availability of these tests have been limited, the number of people who test positive serves as a lower bound for the total number of people infected.  Additionally one may consider and account for some amount of error in these tests.   We assume those who are infected and symptomatic are more likely to be tested but this also depends on heterogeneity around who has access to tests.
-
-```{r}
-confirmed_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv"))
-```
-
-
-### Country cases
-
-```{r}
-confirmed_ts %>%
-  gather(date, confirmed, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date)) %>%
-  group_by(`Country/Region`, date) %>%
-  summarise(confirmed=sum(confirmed)) %>%
-  mutate(countries = "all countries") %>%
-  bind_rows(., filter(mutate(., countries = "excl china"), `Country/Region` != "China")) %>%
-  bind_rows(., filter(mutate(., countries="excl korea, iran, italy"), !`Country/Region` %in% c("China", "Iran", "Korea, South", "Italy"))) %>%
-  ggplot(aes(date, confirmed, color=`Country/Region`)) +
-  geom_line() + theme(legend.position = "None") +
-  facet_wrap(~ countries, scales = "free", ncol=1)
-```
-
-### Location cases
-
-```{r}
-confirmed_ts %>%
-  gather(date, confirmed, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date),
-         location = paste(`Province/State`, `Country/Region`)) %>%
-  add_count(location, wt=confirmed, name = "total_confirmed") %>%
-  mutate(total_confirmed_rank=dense_rank(desc(total_confirmed))) %>%
-  filter(total_confirmed_rank %in% 1:10) %>%
-  ggplot(aes(date, confirmed, fill=`location`)) +
-  geom_bar(stat="identity") +
-  theme(legend.position = "None") +
-  facet_wrap(~ `Country/Region`, scale="free") +
-  geom_smooth(method = "loess")
-```
-
-## Case resolution
-
-We define a case as active if it has not resolved in a recovery or death.  In that active state one can be classified as being asymptomatic, mild, or severe.  We would assume severe cases are hospitalized, mild symptoms may have varying degrees of self-quarantine and asymptomatic operating as usual, unless they have been made aware of their infection status by a test.
-
-### Deaths
-
-```{r}
-deaths_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv"))
-```
-
-
-### Country cases
-
-```{r}
-deaths_ts %>%
-  gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date)) %>%
-  group_by(`Country/Region`, date) %>%
-  summarise(deaths=sum(deaths)) %>%
+joined %>%
+  mutate(location = !!sym(geo_level)) %>%
+  # aggregate by location
+  group_by(location, date, stat) %>%
+  summarise(value = sum(value)) %>%
   ungroup() %>%
-  add_count(`Country/Region`, wt = deaths, name = "total_deaths") %>%
-  mutate(total_deaths_rank = dense_rank(desc(total_deaths))) %>%
-  filter(total_deaths_rank %in% 1:10) %>%         
-  ggplot(aes(date, deaths, color=`Country/Region`)) +
-  geom_line()
+  # location order
+  mutate(total_wt = case_when(
+    stat == "deaths" ~ dcr_wts[1] * value,
+    stat == "confirmed" ~ dcr_wts[2] * value,
+    stat == "recovered" ~ dcr_wts[3] * value
+  )) %>%
+  add_count(location, wt = total_wt, name = "total") %>%
+  mutate(total_rank = dense_rank(desc(total))) %>%
+  # filter top n
+  filter(total_rank %in% 5:(show_top_n + 4)) %>%
+  # order by rank
+  mutate(location = fct_reorder(location, total_rank)) %>%
+  ggplot(aes(date, value, color=location)) +
+  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
+  theme(legend.position = "bottom", legend.title = element_blank()) +
+  xlab(element_blank())
 ```
+
+## sans Spain, France
 
 ```{r}
-deaths_ts %>%
-  gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date)) %>%
-  group_by(`Country/Region`, date) %>%
-  summarise(deaths=sum(deaths)) %>%
-  mutate(countries = "all countries") %>%
-  bind_rows(., filter(mutate(., countries = "excl china"), `Country/Region` != "China")) %>%
-  bind_rows(., filter(mutate(., countries="excl korea, iran, italy"), !`Country/Region` %in% c("China", "Iran", "Korea, South", "Italy"))) %>%
-  ggplot(aes(date, deaths, color=`Country/Region`)) +
-  geom_line() + theme(legend.position = "None") +
-  facet_wrap(~ countries, scales = "free", ncol=1)
+geo_level <- "Country/Region"
+dcr_wts <- c(1, 0, 0)
+show_top_n <- 10
+
+joined %>%
+  mutate(location = !!sym(geo_level)) %>%
+  # aggregate by location
+  group_by(location, date, stat) %>%
+  summarise(value = sum(value)) %>%
+  ungroup() %>%
+  # location order
+  mutate(total_wt = case_when(
+    stat == "deaths" ~ dcr_wts[1] * value,
+    stat == "confirmed" ~ dcr_wts[2] * value,
+    stat == "recovered" ~ dcr_wts[3] * value
+  )) %>%
+  add_count(location, wt = total_wt, name = "total") %>%
+  mutate(total_rank = dense_rank(desc(total))) %>%
+  # filter top n
+  filter(total_rank %in% 7:(show_top_n + 6)) %>%
+  # order by rank
+  mutate(location = fct_reorder(location, total_rank)) %>%
+  ggplot(aes(date, value, color=location)) +
+  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
+  theme(legend.position = "bottom", legend.title = element_blank()) +
+  xlab(element_blank())
 ```
 
-### Location cases
+# Examining growth {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-deaths_ts %>%
-  gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
-  mutate(date = mdy(date),
-         location = paste(`Province/State`, `Country/Region`)) %>%
-  add_count(location, wt=deaths, name = "total_deaths") %>%
-  mutate(total_deaths_rank=dense_rank(desc(total_deaths))) %>%
-  filter(total_deaths_rank %in% 1:10) %>%
-  ggplot(aes(date, deaths, fill=`location`)) +
-  geom_bar(stat="identity") +
-  theme(legend.position = "None") +
-  facet_wrap(~ `Country/Region`, scale="free") +
-  geom_smooth(method = "loess")
+plot_growth_comps <- function(df, geo_level, dcr_wts = c(1, 0, 0),
+                              show_top_n = 20) {
+  df %>%
+    mutate(location = !!sym(geo_level)) %>%
+    # aggregate by location
+    group_by(location, date, stat) %>%
+    summarise(value = sum(value)) %>%
+    ungroup() %>%
+    # location order
+    mutate(total_wt = case_when(
+      stat == "deaths" ~ dcr_wts[1] * value,
+      stat == "confirmed" ~ dcr_wts[2] * value,
+      stat == "recovered" ~ dcr_wts[3] * value
+    )) %>%
+    add_count(location, wt = total_wt, name = "total") %>%
+    mutate(total_rank = dense_rank(desc(total))) %>%
+    # filter top n
+    filter(total_rank %in% 1:show_top_n) %>%
+    # order by rank
+    mutate(location = fct_reorder(location, total_rank)) %>%
+    ggplot(aes(date, value)) + geom_line() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+    facet_wrap(
+      vars(location, stat), scales="free_y", ncol = 3,
+      labeller=label_wrap_gen(multi_line=FALSE)) +
+    theme(strip.background = element_blank(), legend.position = "None") +
+    xlab(element_blank())
+}
 ```
 
+## By country
 
-# Severity measures
-
-There are two ways with which we're concerned about COVID-19, increases on the extensive and intensive margin. The extensive margin would refer to the growth in the number of people infected. The intensive margin refers to the probability that, given infection, one progresses from no symptoms to mild/severe symptoms and to death.
-
-## Growth
-
-A commonly cited measure for growth is the doubling time.  A measure of how long it takes for the infected population to double.  Since testing effectively limits the number of people who actually test positive, we should be able to assume that observed doubling time based on tests is longer than actual doubling time.  Furthermore, those who are untested and asymptomatic may transmit more than those who show symptoms or those who have been tested - resulting in even shorter doubling times.  As testing increases in a population, we expect this downward bias on doubling time to attenuate due to having a more representative sample and better transmission behavior.
-
-Issue that growth rates are endogenous to testing.  With early increases in testing, we may treath growth rates as an upper bound because existing infections have shown up as 
-
-## Rate of symptom development
-
-This is a rate by which we measure how many infected people develop (at worse) no, mild, or severe symptoms.  We'll assume that only severe symptoms during the course of a case.
-
-## Fatality rate
-
-Fatality rate ideally measures the total number of deaths over the total number of cases after all cases have been resolved by either recovery or death.  In practice, the total number of deaths can typically be seen as a concrete lower bound of the actual number of COVID-19 induced deaths since there are likely deaths attributable to COVID-19 that have gone unmeasured and many of the active infections have some probability of leading to a fatality.  We assume there's an increased fatality rate over increases in symptom severity.
-
-# Worldometer
-
-
-# Scrape data from worldometers
-
-```{r}
-cor_html <- read_html("https://www.worldometers.info/coronavirus/#countries")
-tests_html <- read_html("https://www.worldometers.info/coronavirus/covid-19-testing/")
+```{r, fig.width=9, fig.height=15}
+joined %>% plot_growth_comps("Country/Region", show_top_n = 10)
 ```
 
-# Clean and join country-level case detail and test data
+## China
 
-```{r message=FALSE, warning=FALSE}
-cor_data <- cor_html %>% html_node("#main_table_countries") %>%
-  html_table() %>%
-  # removes commas in numbers
-  mutate_if(is.character, function(x) { gsub("[,:]", "", x) }) %>%
-  # turn everything but country column into a numeric
-  mutate_at(vars(-`Country,Other`), as.numeric) %>%
-  # compute a mortality rate
-  replace_na(list("TotalDeaths" = 0)) %>%
-  mutate(`Case Fatality rate`= TotalDeaths * 100 / TotalCases)
-
-tests_data <- tests_html %>%
-  html_nodes("table") %>%
-  # Extract the first table
-  extract2(1) %>%
-  html_table(header = T) %>%
-  # Missing variable names so fill in
-  as_tibble(.name_repair = "unique") %>%
-  # Get of rid of commas
-  mutate_if(is.character, function(x) { gsub("[,:]", "", x) }) %>%
-  # turn columns except country into numeric
-  mutate_at(vars(-Country), as.numeric) %>%
-  # rename South Korea to S. Korea
-  mutate(Country=if_else(Country == "South Korea", "S. Korea", Country))
-
-(join_data <- cor_data %>%
-  left_join(tests_data, by=c("Country,Other" = "Country")))
-```
-  
-# Analysis
-
-## Crude mortality rate
-
-```{r}
-join_data %>%
-  filter(!is.na(Population)) %>%
-  mutate(`Crude mortality rate`= 100 * TotalDeaths / Population) %>%
-  ggplot(aes(`Crude mortality rate`,
-             reorder(`Country,Other`, `Crude mortality rate`),)) +
-  geom_point() + ylab("Country") +
-  scale_x_continuous(labels = function(x) format(x, scientific = FALSE))
+```{r, fig.width=9, fig.height=15}
+joined %>%
+  filter(`Country/Region` == "China") %>%
+  plot_growth_comps("Province/State", show_top_n=10)
 ```
 
-## Positive test rate
+## US
 
-```{r}
-join_data %>%
-  filter(!is.na(Population)) %>%
-  mutate(`Positive test rate`= 100 * TotalCases / `Tests Performed`) %>%
-  ggplot(aes(`Positive test rate`,
-             reorder(`Country,Other`, `Positive test rate`),
-             color=`Tests per Million People`)) +
-  geom_point() +
-  scale_x_continuous(labels = function(x) format(x, scientific = FALSE)) +
-  ylab("Country")
+```{r, fig.width=9, fig.height=15}
+joined %>%
+  filter(`Country/Region` == "US") %>%
+  plot_growth_comps("Province/State", show_top_n = 10)
 ```
 
-## Case fatality rate by test saturation
+## United Kingdom
 
-One misleading stat we often see are mortality rates based on non-uniform testing.  In some countries, testing capabilities are limited so only the very sick are being tested.  If you're only testing the very sick it will give you a mortality rate that is biased upward.  Below we take a look at the mortailty rate (as defined by number of deaths / number of positive cases) by the amount of tests per million people within a country.
-  
-```{r}
-join_data %>%
-  select(
-    `Tests per Million People`, `Case Fatality rate`, `Country,Other`, Population,
-    TotalCases) %>%
-  filter(complete.cases(.)) %>% 
-  filter(`Case Fatality rate` > 0) %>%
-  mutate(low_high = if_else(`Tests per Million People` < 1000, "low", "high")) %>%
-  ggplot(aes(`Tests per Million People`, `Case Fatality rate`, color=TotalCases,
-             group=low_high)) +
-  geom_point() +
-  geom_line(stat="smooth", method = "lm", alpha=0.3) +
-  #geom_hline(yintercept=1, alpha=0.5, color="green") +
-  geom_text(aes(label=`Country,Other`),hjust=0, vjust=2, size=3) +
-  #geom_line(stat="smooth", method="lm", alpha=0.2, color="blue") +
-  ylim(0, 10)
+```{r, fig.width=9, fig.height=5}
+joined %>%
+  filter(`Country/Region` == "United Kingdom") %>%
+  plot_growth_comps("Province/State", show_top_n = 10)
 ```
 
-# Our World in Data
+## France
 
-```{r}
-(wid <- read_csv(url("https://cowid.netlify.com/data/full_data.csv")))
-
-wid %>%
-  # take out big countries
-  filter(location != "China" & location != "Worldwide") %>%
-  # make week
-  mutate(week = floor_date(date, "week")) %>%
-  group_by(location, week) %>%
-  # full weeks
-  filter(n() == 7) %>%
-  mutate_at(vars(new_cases:total_deaths), replace_na, 0) %>%
-  # filter no/low death locations
-  group_by(week, location) %>%
-  summarise_at(vars(new_cases:new_deaths), sum) %>%
-  mutate(total_cases=cumsum(new_cases),
-         total_deaths=cumsum(new_deaths),
-         cfr = total_deaths / total_cases) %>%
-  group_by(location) %>%
-  mutate(max_deaths = max(total_deaths, na.rm=T)) %>%
-  filter(max_deaths > 10) %>%
-  gather(stat, value, -location, -week) %>%
-  ggplot(aes(week, value, color=location)) +
-  #theme(legend.position = "none") +
-  geom_line() +
-  facet_grid(stat ~ location, scales="free")
-  
+```{r, fig.width=9, fig.height=10}
+joined %>%
+  filter(`Country/Region` == "France") %>%
+  plot_growth_comps("Province/State", show_top_n = 10)
 ```
 
+## Denmark
+
+```{r, fig.width=9, fig.height=4}
+joined %>%
+  filter(`Country/Region` == "Denmark") %>%
+  plot_growth_comps("Province/State", show_top_n = 10)
+```
+
+## Canada
+
+```{r, fig.width=9, fig.height=15}
+joined %>%
+  filter(`Country/Region` == "Canada") %>%
+  plot_growth_comps("Province/State", show_top_n = 10)
+```
+
+## Australia
+
+```{r, fig.width=9, fig.height=15}
+joined %>%
+  filter(`Country/Region` == "Australia") %>%
+  plot_growth_comps("Province/State", show_top_n = 10)
+```
