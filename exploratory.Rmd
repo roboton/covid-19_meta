@@ -23,7 +23,7 @@ library(lubridate)
 
 ## John Hopkins CSSE
 
-Daily confirmed cases, deaths and recoveries broken down by country/region and state/provance, when state/provance is available.
+Daily confirmed cases, deaths and recoveries broken down by country/region and state/province, when state/province is available.
 
 ```{r}
 confirmed_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")) %>%
