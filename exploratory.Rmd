@@ -57,7 +57,8 @@ recovered_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19
 #' plot_prep("Country/Region", c(100, 1, -1), show_top_n = 25)
 #'
 #' @export
-plot_prep <- function(df, geo_level, dcr_wts = c(1, 0, 0), show_top_n = 10) {
+plot_prep <- function(df, geo_level = "Country/Region", dcr_wts = c(1, 0, 0),
+                      show_top_n = 10) {
   df %>%
     mutate(location = !!sym(geo_level)) %>%
     # aggregate by location
@@ -65,13 +66,15 @@ plot_prep <- function(df, geo_level, dcr_wts = c(1, 0, 0), show_top_n = 10) {
     summarise(value = sum(value)) %>%
     ungroup() %>%
     # location order
-    mutate(total_wt = case_when(
-      stat == "deaths" ~ dcr_wts[1] * value,
-      stat == "confirmed" ~ dcr_wts[2] * value,
-      stat == "recovered" ~ dcr_wts[3] * value
-    )) %>%
-    add_count(location, wt = total_wt, name = "total") %>%
-    mutate(total_rank = dense_rank(desc(total))) %>%
+    group_by(location) %>%
+    mutate(
+      total_wt =
+        value[which(date == max(date) & stat == "deaths")] * dcr_wts[1] +
+        value[which(date == max(date) & stat == "confirmed")] * dcr_wts[2] +
+        value[which(date == max(date) & stat == "recovered")] * dcr_wts[3]
+    ) %>%
+    ungroup() %>%
+    mutate(total_rank = dense_rank(desc(total_wt))) %>%
     # filter top n
     filter(total_rank %in% 1:show_top_n) %>%
     # order by rank
@@ -87,7 +90,7 @@ plot_country_comps <- function(df) {
   df %>% 
     ggplot(aes(date, value, color=location)) +
     geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
-    theme(legend.position = "bottom", legend.title = element_blank()) +
+    theme(legend.position = "right", legend.title = element_blank()) +
     xlab(element_blank())
 }
 ```
@@ -101,7 +104,7 @@ joined %>%
   plot_country_comps()
 ```
 
-## sans China
+## excl China
 
 ```{r fig.height = 6}
 joined %>%
@@ -110,7 +113,7 @@ joined %>%
   plot_country_comps()
 ```
 
-## sans Italy, Iran, South Korea
+## excl Italy, Iran, South Korea
 
 ```{r fig.height = 6}
 joined %>%
@@ -119,20 +122,17 @@ joined %>%
   plot_country_comps()
 ```
 
-## sans Spain, France
+## excl Spain, France
 
 ```{r fig.height = 6}
 joined %>%
   filter(!`Country/Region` %in%  c("China", "Italy", "Iran", "Korea, South",
                                    "Spain", "France")) %>%
   plot_prep("Country/Region") %>%
-  ggplot(aes(date, value, color=location)) +
-  geom_line() + facet_wrap(vars(stat), ncol=1, scales = "free_y") +
-  theme(legend.position = "bottom", legend.title = element_blank()) +
-  xlab(element_blank())
+  plot_country_comps()
 ```
 
-# Examining growth {.tabset .tabset-fade .tabset-pills}
+# Comparing growth {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
 #' Convenience function to plot growth comparisons
@@ -187,3 +187,77 @@ joined %>%
   filter(`Country/Region` == "Australia") %>%
   plot_growth_comps("Province/State", show_top_n = 10)
 ```
+
+# Total deaths since first death {.tabset .tabset-fade .tabset-pills}
+
+## 10 days since first death
+```{r fig.width = 8}
+joined %>%
+  group_by(`Country/Region`) %>%
+  mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
+  filter(total_deaths > 0 ) %>%
+  #filter(`Country/Region` != "China") %>%
+  plot_prep("Country/Region", show_top_n = 10) %>%
+  arrange(location, stat, date) %>%
+  group_by(location) %>%
+  mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
+  mutate(`Days since first death` = date - first_death_date) %>%
+  filter(stat == "deaths" & value > 0 & `Days since first death` <= 10) %>%
+  ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  # facet_wrap(
+  #   vars(location, stat), scales="free_y", ncol = 1,
+  #   labeller=label_wrap_gen(multi_line=FALSE)) +
+  theme(strip.background = element_blank(), legend.position = "right",
+        legend.title = element_blank()) +
+  ylab("Total deaths")
+```
+
+## 30 days since first death
+```{r fig.width = 8}
+joined %>%
+  group_by(`Country/Region`) %>%
+  mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
+  filter(total_deaths > 0 ) %>%
+  #filter(`Country/Region` != "China") %>%
+  plot_prep("Country/Region", show_top_n = 10) %>%
+  arrange(location, stat, date) %>%
+  group_by(location) %>%
+  mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
+  mutate(`Days since first death` = date - first_death_date) %>%
+  filter(stat == "deaths" & value > 0 & `Days since first death` <= 30) %>%
+  ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  # facet_wrap(
+  #   vars(location, stat), scales="free_y", ncol = 1,
+  #   labeller=label_wrap_gen(multi_line=FALSE)) +
+  theme(strip.background = element_blank(), legend.position = "right",
+        legend.title = element_blank()) +
+  ylab("Total deaths")
+```
+
+## 90 days since first death
+
+```{r fig.width = 8}
+joined %>%
+  group_by(`Country/Region`) %>%
+  mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
+  filter(total_deaths > 0 ) %>%
+  #filter(`Country/Region` != "China") %>%
+  plot_prep("Country/Region", show_top_n = 10) %>%
+  arrange(location, stat, date) %>%
+  group_by(location) %>%
+  mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
+  mutate(`Days since first death` = date - first_death_date) %>%
+  filter(stat == "deaths" & value > 0 & `Days since first death` <= 90) %>%
+  ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  # facet_wrap(
+  #   vars(location, stat), scales="free_y", ncol = 1,
+  #   labeller=label_wrap_gen(multi_line=FALSE)) +
+  theme(strip.background = element_blank(), legend.position = "right",
+        legend.title = element_blank()) +
+  ylab("Total deaths")
+```
+
+# Doubling days
