@@ -57,8 +57,8 @@ recovered_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19
 #' plot_prep("Country/Region", c(100, 1, -1), show_top_n = 25)
 #'
 #' @export
-plot_prep <- function(df, geo_level = "Country/Region", dcr_wts = c(1, 0, 0),
-                      show_top_n = 10) {
+plot_prep <- function(df, geo_level = "Country/Region", dcr_wts = c(1, 0.01, 0),
+                      show_top = 1:10) {
   df %>%
     mutate(location = !!sym(geo_level)) %>%
     # aggregate by location
@@ -76,7 +76,7 @@ plot_prep <- function(df, geo_level = "Country/Region", dcr_wts = c(1, 0, 0),
     ungroup() %>%
     mutate(total_rank = dense_rank(desc(total_wt))) %>%
     # filter top n
-    filter(total_rank %in% 1:show_top_n) %>%
+    filter(total_rank %in% show_top) %>%
     # order by rank
     mutate(location = fct_reorder(location, total_rank)) 
 }
@@ -136,10 +136,8 @@ joined %>%
 
 ```{r}
 #' Convenience function to plot growth comparisons
-plot_growth_comps <- function(df, geo_level, dcr_wts = c(1, 0, 0),
-                              show_top_n = 10) {
+plot_growth_comps <- function(df) {
   df %>%
-    plot_prep(geo_level, dcr_wts, show_top_n) %>%
     ggplot(aes(date, value)) + geom_line() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
     facet_wrap(
@@ -153,7 +151,9 @@ plot_growth_comps <- function(df, geo_level, dcr_wts = c(1, 0, 0),
 ## By country
 
 ```{r, fig.width=9, fig.height=15}
-joined %>% plot_growth_comps("Country/Region", show_top_n = 10)
+joined %>%
+  plot_prep() %>%
+  plot_growth_comps()
 ```
 
 ## China
@@ -161,7 +161,8 @@ joined %>% plot_growth_comps("Country/Region", show_top_n = 10)
 ```{r, fig.width=9, fig.height=15}
 joined %>%
   filter(`Country/Region` == "China") %>%
-  plot_growth_comps("Province/State", show_top_n=10)
+  plot_prep("Province/State") %>%
+  plot_growth_comps()
 ```
 
 ## US
@@ -169,7 +170,8 @@ joined %>%
 ```{r, fig.width=9, fig.height=18}
 joined %>%
   filter(`Country/Region` == "US") %>%
-  plot_growth_comps("Province/State", show_top_n = 10)
+  plot_prep("Province/State") %>%
+  plot_growth_comps()
 ```
 
 ## Canada
@@ -177,7 +179,8 @@ joined %>%
 ```{r, fig.width=9, fig.height=15}
 joined %>%
   filter(`Country/Region` == "Canada") %>%
-  plot_growth_comps("Province/State", show_top_n = 10)
+  plot_prep("Province/State") %>%
+  plot_growth_comps()
 ```
 
 ## Australia
@@ -185,79 +188,47 @@ joined %>%
 ```{r, fig.width=9, fig.height=15}
 joined %>%
   filter(`Country/Region` == "Australia") %>%
-  plot_growth_comps("Province/State", show_top_n = 10)
+  plot_prep("Province/State") %>%
+  plot_growth_comps()
 ```
 
 # Total deaths since first death {.tabset .tabset-fade .tabset-pills}
 
+```{r}
+plot_deaths_since_first <- function(df, days_since) {
+  df %>%
+    group_by(`Country/Region`) %>%
+    mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
+    filter(total_deaths > 0 ) %>%
+    plot_prep("Country/Region") %>%
+    arrange(location, stat, date) %>%
+    group_by(location) %>%
+    mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
+    mutate(`Days since first death` = date - first_death_date) %>%
+    filter(stat == "deaths" & value > 0 &
+             `Days since first death` <= days_since) %>%
+    ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+    theme(strip.background = element_blank(), legend.position = "right",
+          legend.title = element_blank()) +
+    ylab("Total deaths")
+}
+```
+
+
 ## 10 days since first death
 ```{r fig.width = 8}
 joined %>%
-  group_by(`Country/Region`) %>%
-  mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
-  filter(total_deaths > 0 ) %>%
-  #filter(`Country/Region` != "China") %>%
-  plot_prep("Country/Region", show_top_n = 10) %>%
-  arrange(location, stat, date) %>%
-  group_by(location) %>%
-  mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
-  mutate(`Days since first death` = date - first_death_date) %>%
-  filter(stat == "deaths" & value > 0 & `Days since first death` <= 10) %>%
-  ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
-  # facet_wrap(
-  #   vars(location, stat), scales="free_y", ncol = 1,
-  #   labeller=label_wrap_gen(multi_line=FALSE)) +
-  theme(strip.background = element_blank(), legend.position = "right",
-        legend.title = element_blank()) +
-  ylab("Total deaths")
+  plot_deaths_since_first(10)
 ```
 
 ## 30 days since first death
 ```{r fig.width = 8}
 joined %>%
-  group_by(`Country/Region`) %>%
-  mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
-  filter(total_deaths > 0 ) %>%
-  #filter(`Country/Region` != "China") %>%
-  plot_prep("Country/Region", show_top_n = 10) %>%
-  arrange(location, stat, date) %>%
-  group_by(location) %>%
-  mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
-  mutate(`Days since first death` = date - first_death_date) %>%
-  filter(stat == "deaths" & value > 0 & `Days since first death` <= 30) %>%
-  ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
-  # facet_wrap(
-  #   vars(location, stat), scales="free_y", ncol = 1,
-  #   labeller=label_wrap_gen(multi_line=FALSE)) +
-  theme(strip.background = element_blank(), legend.position = "right",
-        legend.title = element_blank()) +
-  ylab("Total deaths")
+  plot_deaths_since_first(30)
 ```
-
 ## 90 days since first death
-
 ```{r fig.width = 8}
 joined %>%
-  group_by(`Country/Region`) %>%
-  mutate(total_deaths = sum(value * (stat == "deaths"))) %>%
-  filter(total_deaths > 0 ) %>%
-  #filter(`Country/Region` != "China") %>%
-  plot_prep("Country/Region", show_top_n = 10) %>%
-  arrange(location, stat, date) %>%
-  group_by(location) %>%
-  mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
-  mutate(`Days since first death` = date - first_death_date) %>%
-  filter(stat == "deaths" & value > 0 & `Days since first death` <= 90) %>%
-  ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
-  # facet_wrap(
-  #   vars(location, stat), scales="free_y", ncol = 1,
-  #   labeller=label_wrap_gen(multi_line=FALSE)) +
-  theme(strip.background = element_blank(), legend.position = "right",
-        legend.title = element_blank()) +
-  ylab("Total deaths")
+  plot_deaths_since_first(90)
 ```
-
-# Doubling days
