@@ -4,8 +4,8 @@ output:
   html_notebook:
     code_folding: hide
     theme: lumen
-  html_document:
-    df_print: paged
+    toc: true
+    toc_float: true
 ---
 
 [Github repo](https://github.com/roboton/covid-19_meta)
@@ -26,23 +26,23 @@ library(lubridate)
 Daily confirmed cases, deaths and recoveries broken down by country/region and state/province, when state/province is available.
 
 ```{r}
-confirmed_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")) %>%
+confirmed_ts <- read_csv(url("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")) %>%
   gather(date, confirmed, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
   mutate(date = mdy(date))
-deaths_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv")) %>%
+deaths_ts <- read_csv(url("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv")) %>%
   gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
   mutate(date = mdy(date))
-recovered_ts <- read_csv(url("https://raw.githubusercontent.com/roboton/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv")) %>%
+recovered_ts <- read_csv(url("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv")) %>%
   gather(date, recovered, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
   mutate(date = mdy(date))
 
-(joined <- confirmed_ts %>%
-   left_join(deaths_ts) %>%
-   left_join(recovered_ts) %>%
-   gather(stat, value, confirmed, deaths, recovered) %>%
-   arrange(`Country/Region`, `Province/State`, date, stat)) %>% sample_frac(1)
-joined %>%
-  mutate_if(is.character, as.factor) %>% summary()
+joined <- confirmed_ts %>%
+  left_join(deaths_ts) %>%
+  left_join(recovered_ts) %>%
+  gather(stat, value, confirmed, deaths, recovered) %>%
+  arrange(`Country/Region`, `Province/State`, date, stat)
+
+joined %>% mutate_if(is.character, as.factor) %>% summary()
 ```
 ```{r}
 #' Prepares data.frame for plotting by aggregating, weighting, reordering, 
@@ -99,7 +99,7 @@ plot_country_comps <- function(df) {
 
 ## Top countries
 
-```{r fig.height = 6}
+```{r fig.height = 8}
 joined %>%
   plot_prep("Country/Region") %>%
   plot_country_comps()
@@ -107,7 +107,7 @@ joined %>%
 
 ## excl China
 
-```{r fig.height = 6}
+```{r fig.height = 8}
 joined %>%
   filter(!`Country/Region` %in%  c("China")) %>%
   plot_prep("Country/Region") %>%
@@ -116,7 +116,7 @@ joined %>%
 
 ## excl Italy, Iran, South Korea
 
-```{r fig.height = 6}
+```{r fig.height = 8}
 joined %>%
   filter(!`Country/Region` %in%  c("China", "Italy", "Iran", "Korea, South")) %>%
   plot_prep("Country/Region") %>%
@@ -125,7 +125,7 @@ joined %>%
 
 ## excl Spain, France
 
-```{r fig.height = 6}
+```{r fig.height = 8}
 joined %>%
   filter(!`Country/Region` %in%  c("China", "Italy", "Iran", "Korea, South",
                                    "Spain", "France")) %>%
@@ -282,91 +282,121 @@ joined %>%
 
 ##  Days to double deaths since 10th death {.tabset .tabset-fade .tabset-pills}
 
+h/t: [\@loeserjohn](https://twitter.com/loeserjohn)
+
 ### Country/Region level
 
-```{r fig.height=6, message=FALSE, warning=FALSE}
-days_since <- 20
+```{r fig.width = 7, warning = FALSE, error = FALSE}
 n_deaths <- 10
 min_deaths <- n_deaths * 2
-top_n_countries <- 1:10
+top_n_countries <- 1:20
+trunc_to_n <- 2
+geo_level = "Country/Region"
 
 # TODO(roboton): Refactor into prep and plot functions
 joined %>%
+  
   # plot prep at country level
-  plot_prep("Country/Region", show_top = top_n_countries) %>%
+  plot_prep(geo_level, show_top = top_n_countries) %>%
+  
   # limit to deaths
   filter(stat == "deaths") %>%
+  
   # drop countries with less than min_deaths
   group_by(location) %>%
   filter(value[which.max(date)] >= min_deaths) %>%
   ungroup() %>%
+  
   # get the first date with more than or equal to n_deaths
   group_by(location) %>%
-  mutate(nth_death_date = date[which(value >= n_deaths)][1]) %>%
+  mutate(nth_death_date = date[which(value >= n_deaths) - 1][1]) %>%
   mutate(`Days since nth death` = date - nth_death_date) %>%
+  
   # Drop days before nth deaths date
   filter(`Days since nth death` > 0) %>%
+  
+  # Compute Days to Double
+  group_by(location) %>%
+  
   mutate(
-    # get double days
-    `Days to double` = date -
-      date[sapply(value,
-                  function(x) { which.min(abs(floor(x / 2) - value)) })],
-    # set to zero for values less than min_deaths
-    `Days to double` = if_else(value < min_deaths, as.difftime("", units="days"),
-                               `Days to double`)) %>%
-  arrange(location, stat, date) %>%
-  filter(`Days since nth death` <= days_since) %>%
+    # set days to double
+    double_idx = sapply(value, FUN=function(x) { max(which(value <= x/2)) }),
+    `Days to double` = date - date[double_idx]
+  ) %>%
+  filter(!is.na(`Days to double`)) %>%
+  ## plot
+  # truncate to second longest time series
+  group_by(location) %>%
+  mutate(max_days_since_nth_death = max(`Days since nth death`)) %>%
+  ungroup() %>%
+  mutate(max_days_rank = dense_rank(desc(max_days_since_nth_death))) %>%
+  filter(`Days since nth death` <= max(`Days since nth death`[max_days_rank == trunc_to_n])) %>%
+  group_by(location) %>%
+  mutate(time_points = n()) %>%
+  ungroup() %>%
+  filter(time_points > 2) %>%
   ggplot(aes(`Days since nth death`, `Days to double`, color=location)) +
   geom_point(alpha = 0.2) +
-  geom_smooth(se=F) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
-  theme(strip.background = element_blank(), legend.position = "right",
-        legend.title = element_blank()) +
-  ylab("Double days") +
-  ylab("Days since 10th death")
+  geom_smooth(method="auto", se=F) +
+  xlab(paste("days since deaths =", n_deaths)) -> p
+  ggplotly(p)
 ```
 
 ### State/Province level
 
-```{r fig.height=6, message=FALSE, warning=FALSE}
-days_since <- 20
+```{r fig.width = 7, warning = FALSE, error = FALSE}
 n_deaths <- 10
 min_deaths <- n_deaths * 2
-top_n_states <- 1:10
+top_n_countries <- 1:15
+trunc_to_n <- 1
+geo_level = "Province/State"
 
 # TODO(roboton): Refactor into prep and plot functions
 joined %>%
-  # plot prep at country level
   filter(!is.na(`Province/State`) & `Province/State` != `Country/Region`) %>%
-  plot_prep("Province/State", show_top = top_n_countries) %>%
+   
+  # plot prep at country level
+  plot_prep(geo_level, show_top = top_n_countries) %>%
+  
   # limit to deaths
   filter(stat == "deaths") %>%
+  
   # drop countries with less than min_deaths
   group_by(location) %>%
   filter(value[which.max(date)] >= min_deaths) %>%
   ungroup() %>%
+  
   # get the first date with more than or equal to n_deaths
   group_by(location) %>%
-  mutate(nth_death_date = date[which(value >= n_deaths)][1]) %>%
+  mutate(nth_death_date = date[which(value >= n_deaths) - 1][1]) %>%
   mutate(`Days since nth death` = date - nth_death_date) %>%
+  
   # Drop days before nth deaths date
   filter(`Days since nth death` > 0) %>%
+  
+  # Compute Days to Double
+  group_by(location) %>%
+  
   mutate(
-    # get double days
-    `Days to double` = date -
-      date[sapply(value,
-                  function(x) { which.min(abs(floor(x / 2) - value)) })],
-    # set to zero for values less than min_deaths
-    `Days to double` = if_else(value < min_deaths, as.difftime("", units="days"),
-                               `Days to double`)) %>%
-  arrange(location, stat, date) %>%
-  filter(`Days since nth death` <= days_since) %>%
+    # set days to double
+    double_idx = sapply(value, FUN=function(x) { max(which(value <= x/2)) }),
+    `Days to double` = date - date[double_idx]
+  ) %>%
+  filter(!is.na(`Days to double`)) %>%
+  ## plot
+  # truncate to second longest time series
+  group_by(location) %>%
+  mutate(max_days_since_nth_death = max(`Days since nth death`)) %>%
+  ungroup() %>%
+  mutate(max_days_rank = dense_rank(desc(max_days_since_nth_death))) %>%
+  filter(`Days since nth death` <= max(`Days since nth death`[max_days_rank == trunc_to_n])) %>%
+  group_by(location) %>%
+  mutate(time_points = n()) %>%
+  ungroup() %>%
+  filter(time_points > 2) %>%
   ggplot(aes(`Days since nth death`, `Days to double`, color=location)) +
   geom_point(alpha = 0.2) +
-  geom_smooth(se=F) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
-  theme(strip.background = element_blank(), legend.position = "right",
-        legend.title = element_blank()) +
-  ylab("Double days") +
-  ylab("Days since 10th death")
+  geom_smooth(method="auto", se=F) +
+  xlab(paste("days since deaths =", n_deaths)) -> p
+  ggplotly(p) 
 ```
