@@ -1,0 +1,133 @@
+library(shiny)
+library(tidyverse)
+library(lubridate)
+library(plotly)
+
+#' Prepares data.frame for plotting by aggregating, weighting, reordering, 
+#' and filtering by location.
+#'
+#' @param geo_level column name to aggregate (sum) by
+#' @param dcr_wts weights to order locations; vector of c(deaths, confirmed,
+#'                                                        recovered)
+#' @param show_top_n show top n locations ordered by dcr_wts
+#'
+#' @return an aggregated, reordered, and filtered by location data.frame
+#'
+#' @examples
+#' plot_prep("Country/Region", c(100, 1, -1), show_top_n = 25)
+#'
+#' @export
+plot_prep <- function(df, geo_level = "Country/Region", dcr_wts = c(1, 0.01, 0),
+                      show_top = 1:10) {
+  df %>%
+    mutate(location = !!sym(geo_level)) %>%
+    # aggregate by location
+    group_by(location, date, stat) %>%
+    summarise(value = sum(value)) %>%
+    ungroup() %>%
+    # location order
+    group_by(location) %>%
+    mutate(
+      total_wt =
+        value[which(date == max(date) & stat == "deaths")] * dcr_wts[1] +
+        value[which(date == max(date) & stat == "confirmed")] * dcr_wts[2] +
+        value[which(date == max(date) & stat == "recovered")] * dcr_wts[3]
+    ) %>%
+    ungroup() %>%
+    mutate(total_rank = dense_rank(desc(total_wt))) %>%
+    # filter top n
+    filter(total_rank %in% show_top) %>%
+    # order by rank
+    mutate(location = fct_reorder(location, total_rank)) 
+}
+
+plot_deaths_since_first <- function(df, days_since, init_deaths = 3,
+                                    show_top = 1:25) {
+  xlab <- paste("Days since deaths >=", init_deaths)
+  df %>%
+    plot_prep("Country/Region", show_top = show_top) %>%
+    group_by(location) %>%
+    mutate(total_deaths = value[which(date == max(date) &
+                                        stat == "deaths")][1]) %>%
+    filter(total_deaths > 0) %>%
+    mutate(init_death_date = date[which(value >= init_deaths &
+                                           stat == "deaths")][1]) %>%
+    mutate(
+      !!sym(xlab) := date - init_death_date) %>%
+    filter(stat == "deaths" & value > 0 &
+             between(!!sym(xlab), 0, days_since)) %>%
+    ggplot(aes(!!sym(xlab), value, 
+               color=location)) + geom_line() +
+    theme(strip.background = element_blank(), legend.position = "right",
+          legend.title = element_blank()) +
+    ylab("Total deaths")
+}
+
+# data prep
+confirmed_ts <- read_csv(url("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")) %>%
+  gather(date, confirmed, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
+  mutate(date = mdy(date))
+deaths_ts <- read_csv(url("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv")) %>%
+  gather(date, deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
+  mutate(date = mdy(date))
+recovered_ts <- read_csv(url("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv")) %>%
+  gather(date, recovered, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
+  mutate(date = mdy(date))
+
+joined <- confirmed_ts %>%
+  left_join(deaths_ts) %>%
+  left_join(recovered_ts) %>%
+  gather(stat, value, confirmed, deaths, recovered) %>%
+  arrange(`Country/Region`, `Province/State`, date, stat)
+
+# countries_provinces <- joined %>%
+#     select(`Country/Region`, `Province/State`) %>%
+#     distinct()
+
+# params
+
+# Define UI for application that draws a histogram
+ui <- fluidPage(
+
+  # Application title
+  titlePanel("Deaths compare"),
+
+  # Sidebar with a slider input for number of bins 
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("n_deaths",
+                  "initial number of deaths:",
+                  min = 2,
+                  max = 100,
+                  value = 10),
+      sliderInput("top_n_countries",
+                  "top countries:",
+                  min = 1,
+                  max = 25,
+                  value = c(1, 15)),
+      sliderInput("days_since",
+                  "days since nth death",
+                  min = 1,
+                  max = 100,
+                  value = 30),
+      width = 3
+    ),
+    mainPanel(
+      plotlyOutput("d2dPlot", height = "600px")
+    )
+  )
+)
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  output$d2dPlot <- renderPlotly({
+    top_n_countries <- input$top_n_countries[1]:input$top_n_countries[2]
+    
+    ggplotly(joined %>%
+      plot_deaths_since_first(input$days_since, input$n_deaths,
+                              show_top = top_n_countries))
+  })
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)

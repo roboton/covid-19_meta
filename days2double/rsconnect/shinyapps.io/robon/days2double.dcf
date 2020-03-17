@@ -1,0 +1,12 @@
+name: days2double
+title: days2double
+username:
+account: robon
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1957142
+bundleId: 2889285
+url: https://robon.shinyapps.io/days2double/
+when: 1584427476.22424
+asMultiple: FALSE
+asStatic: FALSE

@@ -17,6 +17,8 @@ library(tidyverse)
 library(rvest)
 library(magrittr)
 library(lubridate)
+library(plotly)
+library(viridis)
 ```
 
 # Understanding our data sources
@@ -195,20 +197,23 @@ joined %>%
 
 # Total deaths since first death {.tabset .tabset-fade .tabset-pills}
 ```{r}
-plot_deaths_since_first <- function(df, days_since) {
+plot_deaths_since_first <- function(df, days_since, init_deaths = 3,
+                                    show_top = 1:10) {
+  xlab <- paste("Days since deaths =", init_deaths)
   df %>%
-    group_by(`Country/Region`) %>%
-    mutate(total_deaths = value[which(date == max(date) & stat == "deaths")][1]) %>%
-    filter(total_deaths > 0) %>%
-    plot_prep("Country/Region") %>%
-    arrange(location, stat, date) %>%
+    plot_prep("Country/Region", show_top = show_top) %>%
     group_by(location) %>%
-    mutate(first_death_date = date[which(value != 0 & stat == "deaths")][1]) %>%
-    mutate(`Days since first death` = date - first_death_date) %>%
+    mutate(total_deaths = value[which(date == max(date) &
+                                        stat == "deaths")][1]) %>%
+    filter(total_deaths > 0) %>%
+    mutate(init_death_date = date[which(value >= init_deaths &
+                                           stat == "deaths")][1]) %>%
+    mutate(
+      !!sym(xlab) := date - init_death_date) %>%
     filter(stat == "deaths" & value > 0 &
-             `Days since first death` <= days_since) %>%
-    ggplot(aes(`Days since first death`, value, color=location)) + geom_line() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+             between(!!sym(xlab), 0, days_since)) %>%
+    ggplot(aes(!!sym(xlab), value, 
+               color=location)) + geom_line() +
     theme(strip.background = element_blank(), legend.position = "right",
           legend.title = element_blank()) +
     ylab("Total deaths")
@@ -216,21 +221,21 @@ plot_deaths_since_first <- function(df, days_since) {
 ```
 
 ## 10 days since first death
-```{r fig.width = 8}
+```{r fig.width=8, message=FALSE, warning=FALSE}
 joined %>%
   plot_deaths_since_first(10)
 ```
 
 ## 30 days since first death
-```{r fig.width = 8}
+```{r fig.width=8, message=FALSE, warning=FALSE}
 joined %>%
   plot_deaths_since_first(30)
 ```
 
-## 90 days since first death
-```{r fig.width = 8}
+## 60 days since first death
+```{r fig.width=8, message=FALSE, warning=FALSE}
 joined %>%
-  plot_deaths_since_first(90)
+  plot_deaths_since_first(60)
 ```
 
 # Double days
@@ -286,7 +291,7 @@ h/t: [\@loeserjohn](https://twitter.com/loeserjohn)
 
 ### Country/Region level
 
-```{r fig.width = 7, warning = FALSE, error = FALSE}
+```{r fig.width=9, message=FALSE, warning=FALSE}
 n_deaths <- 10
 min_deaths <- n_deaths * 2
 top_n_countries <- 1:20
@@ -342,18 +347,18 @@ joined %>%
   ggplotly(p)
 ```
 
-### State/Province level
+### Long view
 
-```{r fig.width = 7, warning = FALSE, error = FALSE}
+```{r fig.width = 9, warning = FALSE, message= FALSE}
 n_deaths <- 10
 min_deaths <- n_deaths * 2
 top_n_countries <- 1:15
 trunc_to_n <- 1
-geo_level = "Province/State"
+geo_level = "Country/Region"
 
 # TODO(roboton): Refactor into prep and plot functions
 joined %>%
-  filter(!is.na(`Province/State`) & `Province/State` != `Country/Region`) %>%
+  #filter(!is.na(`Province/State`) & `Province/State` != `Country/Region`) %>%
    
   # plot prep at country level
   plot_prep(geo_level, show_top = top_n_countries) %>%
