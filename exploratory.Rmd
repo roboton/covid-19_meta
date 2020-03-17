@@ -8,11 +8,14 @@ output:
     toc_float: true
 ---
 
-[Github repo](https://github.com/roboton/covid-19_meta)
+Please feel free to contribute to the [Github repo](https://github.com/roboton/covid-19_meta) here.  You can start by [cloning](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/cloning-a-repository) this repository or contacting me at my [email](mailto:roberton@gmail.com) to be added as a collaborator.  Could certainly use your help!
 
 ```{r setup}
-knitr::opts_chunk$set(message = FALSE, error = FALSE)
-
+knitr::opts_chunk$set(
+	error = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
 library(tidyverse)
 library(rvest)
 library(magrittr)
@@ -220,6 +223,8 @@ plot_deaths_since_first <- function(df, days_since, init_deaths = 3,
 }
 ```
 
+[Dashboard version](https://robon.shinyapps.io/deathcomp/)
+
 ## 10 days since first death
 ```{r fig.width=8, message=FALSE, warning=FALSE}
 joined %>%
@@ -285,9 +290,11 @@ joined %>%
   xlab(element_blank())
 ```
 
-##  Days to double deaths since 10th death {.tabset .tabset-fade .tabset-pills}
+##  Days to double deaths since nth death {.tabset .tabset-fade .tabset-pills}
 
 h/t: [\@loeserjohn](https://twitter.com/loeserjohn)
+
+[Dashboard version](https://robon.shinyapps.io/days2double/)
 
 ### Country/Region level
 

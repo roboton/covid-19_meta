@@ -63,6 +63,7 @@ plot_deaths_since_first <- function(df, days_since, init_deaths = 3,
     ylab("Total deaths")
 }
 
+
 # data prep
 confirmed_ts <- read_csv(url("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")) %>%
   gather(date, confirmed, -`Province/State`, -`Country/Region`, -Lat, -Long) %>%
@@ -90,18 +91,26 @@ joined <- confirmed_ts %>%
 ui <- fluidPage(
 
   # Application title
-  titlePanel("Deaths compare"),
-
+  titlePanel("Mortality comparisons"),
+  tags$a(
+    href = "https://github.com/CSSEGISandData/COVID-19",
+    target = "_blank", "data"),
+  tags$a(
+    href = "https://ond3.com/exploratory.nb.html#total_deaths_since_first_death",
+    target = "_blank", "analysis"),
+  tags$a(
+    href = "https://github.com/roboton/covid-19_meta/tree/master/deathcomp",
+    target = "_blank", "git"),
   # Sidebar with a slider input for number of bins 
   sidebarLayout(
     sidebarPanel(
       sliderInput("n_deaths",
                   "initial number of deaths:",
                   min = 2,
-                  max = 100,
+                  max = 20,
                   value = 10),
       sliderInput("top_n_countries",
-                  "top countries:",
+                  "top country range:",
                   min = 1,
                   max = 25,
                   value = c(1, 15)),
@@ -113,7 +122,8 @@ ui <- fluidPage(
       width = 3
     ),
     mainPanel(
-      plotlyOutput("d2dPlot", height = "600px")
+      plotlyOutput("compPlot", height = "500px"),
+      plotlyOutput("d2dPlot", height = "500px")
     )
   )
 )
@@ -121,9 +131,57 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
   output$d2dPlot <- renderPlotly({
+    geo_level = "Country/Region"
+    min_deaths <- input$n_deaths * 2
+    trunc_to_n <- 10 - input$trunc_to_n
+    top_n_countries <- input$top_n_countries[1]:input$top_n_countries[2]
+    ggplotly(joined %>%
+      # plot prep at country level
+      plot_prep(geo_level, show_top = top_n_countries) %>%
+      # limit to deaths
+      filter(stat == "deaths") %>%
+      # drop countries with less than min_deaths
+      group_by(location) %>%
+      filter(value[which.max(date)] >= min_deaths) %>%
+      ungroup() %>%
+      # get the first date with more than or equal to n_deaths
+      group_by(location) %>%
+      mutate(nth_death_date = date[which(value >= input$n_deaths) - 1][1]) %>%
+      mutate(`Days since nth death` = date - nth_death_date) %>%
+      # drop days before nth deaths date
+      filter(`Days since nth death` > 0) %>%
+      # compute Days to Double
+      group_by(location) %>%
+      mutate(
+        # set days to double
+        double_idx = sapply(
+          value, FUN = function(x) { max(which(value <= x/2)) }),
+        `Days to double deaths` = date - date[double_idx]
+      ) %>%
+      filter(!is.na(`Days to double deaths`)) %>%
+      ## plot
+      # truncate to trunc_to_n longest time series
+      filter(between(`Days since nth death`, 0, input$days_since)) %>%
+      # group_by(location) %>%
+      # mutate(max_days_since_nth_death = max(`Days since nth death`)) %>%
+      # ungroup() %>%
+      # mutate(max_days_rank = dense_rank(desc(max_days_since_nth_death))) %>%
+      # filter(`Days since nth death` <= max(
+      #   `Days since nth death`[max_days_rank == trunc_to_n])) %>%
+      group_by(location) %>%
+      mutate(time_points = n()) %>%
+      ungroup() %>%
+      filter(time_points > 2) %>%
+      ggplot(aes(`Days since nth death`, `Days to double deaths`,
+                 color = location)) +
+      geom_point(alpha = 0.2) +
+      geom_smooth(se = F) +
+      xlab(paste("Days since deaths >=", input$n_deaths)))
+  })
+    output$compPlot <- renderPlotly({
     top_n_countries <- input$top_n_countries[1]:input$top_n_countries[2]
     
-    ggplotly(joined %>%
+  ggplotly(joined %>%
       plot_deaths_since_first(input$days_since, input$n_deaths,
                               show_top = top_n_countries))
   })
