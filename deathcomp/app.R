@@ -23,7 +23,7 @@ plot_prep <- function(df, geo_level = "Country/Region", dcr_wts = c(1, 0.01, 0),
     mutate(location = !!sym(geo_level)) %>%
     # aggregate by location
     group_by(location, date, stat) %>%
-    summarise(value = sum(value)) %>%
+    summarise(value = sum(value, na.rm = TRUE)) %>%
     ungroup() %>%
     # location order
     group_by(location) %>%
@@ -94,13 +94,13 @@ ui <- fluidPage(
   titlePanel("Mortality comparisons"),
   tags$a(
     href = "https://github.com/CSSEGISandData/COVID-19",
-    target = "_blank", "data"),
+    target = "_blank", "[data]"),
   tags$a(
     href = "https://ond3.com/exploratory.nb.html#total_deaths_since_first_death",
-    target = "_blank", "analysis"),
+    target = "_blank", "[analysis]"),
   tags$a(
     href = "https://github.com/roboton/covid-19_meta/tree/master/deathcomp",
-    target = "_blank", "git"),
+    target = "_blank", "[git]"),
   # Sidebar with a slider input for number of bins 
   sidebarLayout(
     sidebarPanel(
@@ -135,6 +135,7 @@ server <- function(input, output) {
     min_deaths <- input$n_deaths * 2
     trunc_to_n <- 10 - input$trunc_to_n
     top_n_countries <- input$top_n_countries[1]:input$top_n_countries[2]
+    
     ggplotly(joined %>%
       # plot prep at country level
       plot_prep(geo_level, show_top = top_n_countries) %>%
@@ -174,16 +175,18 @@ server <- function(input, output) {
       filter(time_points > 2) %>%
       ggplot(aes(`Days since nth death`, `Days to double deaths`,
                  color = location)) +
+      geom_line(stat = "smooth", method = "auto", se = F) +
       geom_point(alpha = 0.2) +
       geom_smooth(se = F) +
-      xlab(paste("Days since deaths >=", input$n_deaths)))
+      xlab(paste("Days since deaths >=", input$n_deaths)) +
+      theme(legend.title = element_blank()))
   })
-    output$compPlot <- renderPlotly({
+  output$compPlot <- renderPlotly({
     top_n_countries <- input$top_n_countries[1]:input$top_n_countries[2]
     
-  ggplotly(joined %>%
-      plot_deaths_since_first(input$days_since, input$n_deaths,
-                              show_top = top_n_countries))
+    ggplotly(joined %>%
+               plot_deaths_since_first(input$days_since, input$n_deaths,
+                                       show_top = top_n_countries))
   })
 }
 

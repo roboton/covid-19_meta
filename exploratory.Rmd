@@ -21,7 +21,6 @@ library(rvest)
 library(magrittr)
 library(lubridate)
 library(plotly)
-library(viridis)
 ```
 
 # Understanding our data sources
@@ -348,8 +347,8 @@ joined %>%
   ungroup() %>%
   filter(time_points > 2) %>%
   ggplot(aes(`Days since nth death`, `Days to double`, color=location)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method="auto", se=F) +
+  geom_line(stat = "smooth", method = "auto", se = F) +
+  geom_point(alpha = 0.2, size = 1) +
   xlab(paste("days since deaths =", n_deaths)) -> p
   ggplotly(p)
 ```
@@ -391,7 +390,7 @@ joined %>%
   
   mutate(
     # set days to double
-    double_idx = sapply(value, FUN=function(x) { max(which(value <= x/2)) }),
+    double_idx = sapply(value, FUN = function(x) { max(which(value <= x/2)) }),
     `Days to double` = date - date[double_idx]
   ) %>%
   filter(!is.na(`Days to double`)) %>%
@@ -406,9 +405,66 @@ joined %>%
   mutate(time_points = n()) %>%
   ungroup() %>%
   filter(time_points > 2) %>%
-  ggplot(aes(`Days since nth death`, `Days to double`, color=location)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method="auto", se=F) +
-  xlab(paste("days since deaths =", n_deaths)) -> p
+  ggplot(aes(`Days since nth death`, `Days to double`,
+             color = location)) +
+  geom_line(stat = "smooth", method = "auto", se = F) +
+  geom_point(alpha = 0.2, size = 1) +
+  xlab(paste("days since deaths >=", n_deaths)) -> p
   ggplotly(p) 
 ```
+
+# Prototype
+
+```{r}
+min_total <- 10
+min_stat <-  "deaths"
+geo_level <- "Country/Region"
+max_days_since <- 20
+min_total <- 50
+
+
+joined %>%
+  rename(total = value) %>%
+  mutate(location = !!sym(geo_level)) %>%
+  # aggregate
+  group_by(location, stat, date) %>%
+  summarise(total = sum(total)) %>%
+  # add cfr
+  bind_rows(
+    (.) %>%
+      select(location, stat, date, total) %>%
+      spread(stat, total) %>%
+      mutate(cfr = deaths/confirmed) %>%
+      gather(stat, total, confirmed, deaths, recovered, cfr) %>%
+      filter(stat == "cfr")) %>%
+  # get max_total and first_date per location/stat
+  group_by(location, stat) %>%
+  mutate(max_total = max(total),
+         first_date = min(date[total >= min_total])) %>%
+  group_by(location) %>%
+  # drop earlier dates
+  filter(date >= first_date[stat == min_stat]) %>%
+  # recenter dates
+  mutate(days_since = date - first_date[stat == min_stat]) %>%
+  ungroup() %>%
+  # calc double_days
+  group_by(location, stat) %>%
+  mutate(
+    double_days = date -
+      date[sapply(
+        total, FUN = function(x) { max(which(total <= x/2)) })]) %>%
+  ungroup() %>%
+  gather(value_type, value, total, double_days) %>%
+  ## plotting
+  # truncate days_since
+  filter(days_since <= max_days_since) %>%
+  # dropping small locations
+  group_by(location) %>%
+  filter(max_total[stat == min_stat][1] >= min_total) %>%
+  ungroup() %>%
+  ggplot(aes(days_since, value, color = location)) +
+  geom_line() +
+  facet_wrap(vars(stat, value_type), scales = "free", ncol=2,
+             labeller = label_wrap_gen(multi_line = FALSE))
+```
+

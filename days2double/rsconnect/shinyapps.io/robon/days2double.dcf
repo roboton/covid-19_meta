@@ -5,8 +5,8 @@ account: robon
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 1957142
-bundleId: 2889285
+bundleId: 2891288
 url: https://robon.shinyapps.io/days2double/
-when: 1584427476.22424
+when: 1584473025.10412
 asMultiple: FALSE
 asStatic: FALSE

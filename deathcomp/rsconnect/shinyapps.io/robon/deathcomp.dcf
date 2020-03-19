@@ -5,8 +5,8 @@ account: robon
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 1957282
-bundleId: 2889445
+bundleId: 2896216
 url: https://robon.shinyapps.io/deathcomp/
-when: 1584432705.18463
+when: 1584579691.18284
 asMultiple: FALSE
 asStatic: FALSE
